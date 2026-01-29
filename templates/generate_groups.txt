@@ -1,0 +1,40 @@
+You are a domain expert in tabular classification. Your objective is to define meaningful and interpretable groups of entities (rows).
+
+Features:
+[FEATURES]
+
+Examples:
+[EXAMPLES]
+
+Instructions:
+Generate [NUM_GROUP] interpretable and meaningful groups. Ensure groups are non-trivial (avoid overly generic or overly specific conditions). Refer to the provided examples to identify useful patterns, but do not simply memorize or repeat them. Each group should be general enough to apply to unseen samples, not overly specific to particular values in the examples. Think step-by-step. 
+
+Each group must:
+- Consisted of 1 to 4 simple, interpretable conditions
+- Be distinct from other groups (avoid overlap in definition)
+- Optionally overlap in coverage (i.e., entities can belong to multiple groups)
+
+Include a concise explanation that describes:
+- What kind of entities the group represents
+- Their distinctive characteristics or behaviors
+- How these characteristics relate to the task and target labels (e.g., why this group tends to belong to or differ from the target class).  
+- Why this group is meaningful or relevant based on the features
+- Avoid any repetition, commentary, or meta-explanation
+
+Format for Response:
+Group 1: [A concise yet comprehensive natural-language description (2 to 3 sentences) of the group]
+[Condition 1]
+[Condition 2]
+...
+
+Group 2: ...
+...
+Group [NUM_GROUP]: ...
+...
+
+Format for [Condition]:
+For the categorical variable only,
+- [Feature_name] is in [list of Categorical_values]
+For the numerical variable only,
+- [Feature_name] (> or >= or < or <=) [Numerical_value]
+- [Feature_name] is within range of [Numerical_range_start, Numerical_range_end]

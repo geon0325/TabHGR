@@ -1,0 +1,19 @@
+Provide me a python code for function, given description below.
+
+Function name: [NAME]
+
+Input: Dataframe df_input
+
+Input Features:
+[FEATURES]
+
+Output: Indices of df_input that satisfy all the conditions.
+
+Description:
+[DESCRIPTION]
+
+Conditions: 
+[CONDITIONS]
+
+
+Wrap only the function part with <start> and <end>, and do not add any comments, descriptions, and package importing lines in the code.

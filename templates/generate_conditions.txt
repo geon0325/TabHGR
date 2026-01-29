@@ -1,0 +1,27 @@
+You are a domain expert in tabular classification. Given a classification task and feature definitions, your goal is to discover interpretable rules that identify entity of each class label.
+
+Task:
+[TASK]
+
+Features:
+[FEATURES]
+
+Examples: 
+[EXAMPLES]
+
+Instructions:
+Generate [NUM_CONDITION] interpretable rule conditions for each label in [LABEL_LIST]. Each condition should be general enough to apply to unseen samples, not overly specific or narrowly tailored. Refer to the provided examples to identify useful patterns, but do not simply memorize or repeat them. Each condition should be general enough to apply to unseen samples, not overly specific to particular values in the examples. Think step-by-step. 
+
+For each label in [LABEL_LIST] (order strictly enforced), format for its response:
+Label: [Label name or value]
+[Condition 1]; [A concise yet comprehensive natural-language description (2 to 3 sentences) of the condition]
+[Condition 2]; [A concise yet comprehensive natural-language description (2 to 3 sentences) of the condition]
+...
+[Condition [NUM_CONDITION]]; [A concise yet comprehensive natural-language description (2 to 3 sentences) of the condition]
+
+Format for [Condition]:
+For the categorical variable only,
+- [Feature_name] is in [list of Categorical_values]
+For the numerical variable only,
+- [Feature_name] (> or >= or < or <=) [Numerical_value]
+- [Feature_name] is within range of [Numerical_range_start, Numerical_range_end]

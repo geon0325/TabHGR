@@ -1,0 +1,16 @@
+You are a domain expert in tabular classification. Your objective is to select the most useful features (columns) from the given table.
+
+Task:
+[TASK]
+
+Features:
+[FEATURES]
+
+Examples:
+[EXAMPLES]
+
+Instructions:
+Select 20 features that are most relevant for the classification task. Consider discriminative power, coverage, and generalizability. Think step by step.
+
+Response Format (feature indices only, no explanation):
+A list of 20 feature indices separated by commas.
