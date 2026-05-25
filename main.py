@@ -16,10 +16,11 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 parser = argparse.ArgumentParser()
 parser.add_argument('--dataset', type=str, default='diabetes')
 parser.add_argument('--pseudo_ratio', type=float, default=0.5)
+parser.add_argument('--iter', type=int, default=2)
 args = parser.parse_args()
 
 _DATA = args.dataset
-_NUM_CONDITION = 20
+_NUM_CONDITION = 10
 _SEED = 42
 _SHOT = 0
 _NUM_EXAMPLE = 5
@@ -46,7 +47,7 @@ if _DATA in ['communities', 'myocardial']:
     if X_train is not None:
         X_train = X_train.iloc[:,selected_column_indices]
 
-_NUM_GROUP_TOTAL = min(max(X_all.shape[0] // 10, 200), 1000)
+_NUM_GROUP_TOTAL = min(max(X_all.shape[0] // 10, 400), 1000)
 _NUM_GROUP_BATCH = 20
 
 pseudo_nodes = []
@@ -64,7 +65,7 @@ for TRIAL in range(5):
         condition2index = pkl.load(f)
     
     X = utils.generate_feature(condition2index, X_all.shape[0], len(label_list), _NUM_CONDITION)
-    Z = utils.propagate_hypergraph(H, X, alpha=0.9, max_iter=2)[2]
+    Z = utils.propagate_hypergraph(H, X, alpha=0.9, max_iter=args.iter)[args.iter]
     C = np.sum(Z.reshape(-1, len(label_list), _NUM_CONDITION), axis=2)
 
     C_prob = C / np.sum(C, axis=1)[:,None]
@@ -115,7 +116,7 @@ for TRIAL in range(5):
         condition2index = pkl.load(f)
     
     X = utils.generate_feature(condition2index, X_all.shape[0], len(label_list), _NUM_CONDITION)
-    Z = utils.propagate_hypergraph(H, X, alpha=0.9, max_iter=2)[2]
+    Z = utils.propagate_hypergraph(H, X, alpha=0.9, max_iter=args.iter)[args.iter]
 
     for c_idx in range(_NUM_CONDITION * len(label_list)):
         _Z = np.zeros(Z.shape)
@@ -123,10 +124,10 @@ for TRIAL in range(5):
         auroc = utils.evaluate(_Z, pseudo_nodes[TRIAL], pseudo_labels[TRIAL], multiclass, len(label_list), _NUM_CONDITION)
         results_full_pseudo[TRIAL].append(auroc)
 
-    for i in range(len(groups)):
+    for i in trange(len(groups)):
         _groups = groups[:i] + groups[i+1:]
         H_i = utils.generate_hypergraph(X_all.shape[0], _groups)
-        Z = utils.propagate_hypergraph(H_i, X, alpha=0.9, max_iter=2)[2]
+        Z = utils.propagate_hypergraph(H_i, X, alpha=0.9, max_iter=args.iter)[args.iter]
 
         for c_idx in range(_NUM_CONDITION * len(label_list)):
             _Z = np.zeros(Z.shape)
@@ -147,7 +148,7 @@ for TRIAL in range(5):
         group_scores_pseudo[TRIAL][c_idx] = np.array(group_scores_pseudo[TRIAL][c_idx]) + 1e-10
 
 
-tau_list = [0.01]
+tau_list = [0.01, 0.1, 1.0]
 
 print(f'{"Metric":<10} | {"Raw":>8} | {"Orig":>8} | ' +
       ' | '.join([f"τ={tau:<6}" for tau in tau_list]))
@@ -158,6 +159,7 @@ with open(f'groups/{llm_model}/{_DATA}_{_NUM_GROUP_BATCH}_{_NUM_GROUP_TOTAL}_{_N
     groups = pkl.load(f)
 
 H = utils.generate_hypergraph(X_all.shape[0], groups)
+print('Incidence matrix', H.shape)
 
 all_results = []  # store per-trial results
 
@@ -171,7 +173,7 @@ for TRIAL in range(5):
     X = utils.generate_feature(condition2index, X_all.shape[0], len(label_list), _NUM_CONDITION)
     auc_raw = utils.evaluate(X, X_test.index, y_all, multiclass, len(label_list), _NUM_CONDITION)
     
-    Z = utils.propagate_hypergraph(H, X, alpha=0.9, max_iter=2)[2]
+    Z = utils.propagate_hypergraph(H, X, alpha=0.9, max_iter=args.iter)[args.iter]
     auc_orig = utils.evaluate(Z, X_test.index, y_all, multiclass, len(label_list), _NUM_CONDITION)
 
     Z_minmax_list, Z_sigmoid_list, Z_softmax_list = [], [], defaultdict(list)
@@ -187,22 +189,16 @@ for TRIAL in range(5):
             Z_softmax_list[tau].append(Z_tau)
 
     # --- Evaluate ---
-    Z_minmax = np.concatenate(Z_minmax_list, axis=1)
-    auc_minmax = utils.evaluate(Z_minmax, X_test.index, y_all, multiclass, len(label_list), _NUM_CONDITION)
-
-    Z_sigmoid = np.concatenate(Z_sigmoid_list, axis=1)
-    auc_sigmoid = utils.evaluate(Z_sigmoid, X_test.index, y_all, multiclass, len(label_list), _NUM_CONDITION)
-
     auc_softmax_list = []
     for tau in tau_list:
         Z = np.concatenate(Z_softmax_list[tau], axis=1)
         auc = utils.evaluate(Z, X_test.index, y_all, multiclass, len(label_list), _NUM_CONDITION)
         auc_softmax_list.append(auc)
         
-    all_results.append([auc_raw, auc_orig, auc_minmax, auc_sigmoid] + auc_softmax_list)
+    all_results.append([auc_raw, auc_orig] + auc_softmax_list)
 
     # Per-trial print
-    print(f'{f"TRIAL {TRIAL}":<10} | {auc_raw:8.4f} | {auc_orig:8.4f} | {auc_minmax:8.4f} | {auc_sigmoid:8.4f} |' +
+    print(f'{f"TRIAL {TRIAL}":<10} | {auc_raw:8.4f} | {auc_orig:8.4f} |' +
           ' | '.join([f"{auc:8.4f}" for auc in auc_softmax_list]))
 
 # --- Summary ---
