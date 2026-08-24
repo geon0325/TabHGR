@@ -1,9 +1,5 @@
 # TabHGR
-Code and datasets of **Zero-Shot Tabular Learning via Hypergraph Reasoning with LLMs**, (EMNLP 2026).
-
-Geon Lee, Kyungho Kim, Dongwon Choi, Juyeon Kim, Shinhwan Kang, and Kijung Shin
-
-- The conference website can be found [here](https://2026.emnlp.org/).
+Code and datasets of **Zero-Shot Tabular Learning via Hypergraph Reasoning with LLMs**, ([EMNLP 2026](https://2026.emnlp.org/)).
 
 ## Tabular Datasets
 We provide nine tabular datasets: `adult`, `bank`, `blood`, `car`, `credit-g`, `diabetes`, `heart`, `communities`, and `myocardial`.
