@@ -1,10 +1,15 @@
-### Zero-Shot Tabular Learning via Hypergraph Reasoning with LLMs
+# TabHGR
+Code and datasets of **Zero-Shot Tabular Learning via Hypergraph Reasoning with LLMs**, (EMNLP 2026).
 
 Geon Lee, Kyungho Kim, Dongwon Choi, Juyeon Kim, Shinhwan Kang, and Kijung Shin
 
-[**EMNLP 2026**](https://2026.emnlp.org/): Conference on Empirical Methods in Natural Language Processing 2026
+- The conference website can be found [here](https://2026.emnlp.org/).
 
-## Setup
+## Tabular Datasets
+We provide nine tabular datasets: `adult`, `bank`, `blood`, `car`, `credit-g`, `diabetes`, `heart`, `communities`, and `myocardial`.
+
+## Running TabHGR and TabHGR+
+Install the required packages:
 
 ```bash
 python -m venv .venv
@@ -13,21 +18,11 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-## Running
-
-To run TabHGR and TabHGR+ on the Diabetes dataset:
+Run TabHGR and TabHGR+ on a dataset:
 
 ```bash
 python main.py --dataset diabetes
 ```
-
-Other datasets can be evaluated in the same way:
-
-```bash
-python main.py --dataset heart
-```
-
-Supported datasets: `adult`, `bank`, `blood`, `car`, `credit-g`, `diabetes`, `heart`, `communities`, and `myocardial`.
 
 To run specific trials:
 
