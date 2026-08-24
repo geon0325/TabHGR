@@ -1,5 +1,5 @@
 # TabHGR
-Code and datasets of **Zero-Shot Tabular Learning via Hypergraph Reasoning with LLMs**, ([EMNLP 2026](https://2026.emnlp.org/)).
+Code and datasets of **Zero-Shot Tabular Learning via Hypergraph Reasoning with LLMs** ([EMNLP 2026](https://2026.emnlp.org/)).
 
 ## Tabular Datasets
 Experiments can be run on nine tabular datasets: `adult`, `bank`, `blood`, `car`, `credit-g`, `diabetes`, `heart`, `communities`, and `myocardial`.
