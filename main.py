@@ -1,213 +1,263 @@
-import os
-import math
-import utils
-import random
+"""Run the TabHGR and TabHGR+ zero-shot evaluation."""
+
 import argparse
-import numpy as np
-import pickle as pkl
-from sklearn.metrics import roc_auc_score
+import math
+import pickle
 from collections import defaultdict
-import matplotlib.pyplot as plt
-from tqdm import tqdm, trange
+from dataclasses import dataclass
+from pathlib import Path
 
-import warnings
-warnings.simplefilter(action='ignore', category=FutureWarning)
+import numpy as np
+from tqdm import trange
 
-parser = argparse.ArgumentParser()
-parser.add_argument('--dataset', type=str, default='diabetes')
-parser.add_argument('--pseudo_ratio', type=float, default=0.5)
-parser.add_argument('--iter', type=int, default=2)
-args = parser.parse_args()
+import utils
 
-_DATA = args.dataset
-_NUM_CONDITION = 10
-_SEED = 42
-_SHOT = 0
-_NUM_EXAMPLE = 5
-_NUM_TRIAL = 5
-llm_model = 'gpt-4o'
 
-print(args.dataset, args.pseudo_ratio)
+SEED = 42
+GROUP_BATCH_SIZE = 20
 
-utils.set_seed(_SEED)
-df, X_train, X_test, y_train, y_test, target_attr, label_list, is_cat = utils.get_dataset(_DATA, _SEED, _SHOT)
-multiclass = True if len(label_list) > 2 else False
-y_test = [label_list.index(l) for l in y_test]
 
-X_all = df.drop(target_attr, axis=1)
-y_all = np.array([label_list.index(l) for l in df[target_attr]])
+@dataclass(frozen=True)
+class ExperimentData:
+    num_rows: int
+    test_indices: np.ndarray
+    targets: np.ndarray
+    num_labels: int
 
-if _DATA in ['communities', 'myocardial']:
-    with open(f'data/{_DATA}_selected_column_indices.pkl', 'rb') as f:
-        selected_column_indices = pkl.load(f)
+    @property
+    def multiclass(self):
+        return self.num_labels > 2
 
-    X_all = X_all.iloc[:,selected_column_indices]
-    X_test = X_test.iloc[:,selected_column_indices]
 
-    if X_train is not None:
-        X_train = X_train.iloc[:,selected_column_indices]
+def parse_args():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--dataset", default="diabetes", choices=utils.TASK_DICT)
+    parser.add_argument("--pseudo-ratio", "--pseudo_ratio", type=float, default=0.5)
+    parser.add_argument("--steps", "--iter", dest="steps", type=int, default=2)
+    parser.add_argument("--alpha", type=float, default=0.7)
+    parser.add_argument("--tau", type=float, default=0.01)
+    parser.add_argument("--num-conditions", "--num_conditions", type=int, default=20)
+    parser.add_argument("--num-examples", "--num_examples", type=int, default=5)
+    parser.add_argument("--num-trials", "--num_trials", type=int, default=5)
+    parser.add_argument(
+        "--trials",
+        help="comma-separated trial indices (default: 0..num-trials-1)",
+    )
+    parser.add_argument("--llm-model", "--llm_model", default="gpt-4o")
+    return parser.parse_args()
 
-_NUM_GROUP_TOTAL = min(max(X_all.shape[0] // 10, 400), 1000)
-_NUM_GROUP_BATCH = 20
 
-pseudo_nodes = []
-pseudo_labels = []
+def parse_trials(value, num_trials):
+    if value is None:
+        return list(range(num_trials))
+    return [int(trial) for trial in value.split(",")]
 
-with open(f'groups/{llm_model}/{_DATA}_{_NUM_GROUP_BATCH}_{_NUM_GROUP_TOTAL}_{_NUM_EXAMPLE}_indices.pkl', 'rb') as f:
-    groups = pkl.load(f)
-H = utils.generate_hypergraph(X_all.shape[0], groups)
 
-for TRIAL in range(5):    
-    ### Load Features (Labels/Conditions) ###
-    save_dir = f'conditions/0_shot/{TRIAL}_trial/{llm_model}'
+def load_data(dataset):
+    dataframe, _, test, _, _, target, labels, _ = utils.get_dataset(
+        dataset, SEED, shot=0
+    )
+    targets = np.array([labels.index(value) for value in dataframe[target]])
+    return ExperimentData(
+        num_rows=len(dataframe),
+        test_indices=test.index.to_numpy(),
+        targets=targets,
+        num_labels=len(labels),
+    )
 
-    with open(f'{save_dir}/{_DATA}_{_NUM_CONDITION}_{_SEED}_{_NUM_EXAMPLE}_condition2index.pkl', 'rb') as f:
-        condition2index = pkl.load(f)
-    
-    X = utils.generate_feature(condition2index, X_all.shape[0], len(label_list), _NUM_CONDITION)
-    Z = utils.propagate_hypergraph(H, X, alpha=0.9, max_iter=args.iter)[args.iter]
-    C = np.sum(Z.reshape(-1, len(label_list), _NUM_CONDITION), axis=2)
 
-    C_prob = C / np.sum(C, axis=1)[:,None]
-    sorted_C = np.sort(C, axis=1)
-    conf = sorted_C[:, -1] - sorted_C[:, -2]
+def num_groups_for(num_rows):
+    return min(max(num_rows // 10, 200), 1000)
 
-    nodes =  np.argsort(-conf)[:int(len(conf) * args.pseudo_ratio)]
-    labels = np.full(len(C), -1)
 
-    label2nodes = defaultdict(list)
-    max_num_label = math.ceil(len(nodes) / len(label_list))
+def group_path(args, num_groups):
+    filename = (
+        f"{args.dataset}_{GROUP_BATCH_SIZE}_{num_groups}_"
+        f"{args.num_examples}_indices.pkl"
+    )
+    return Path("groups") / args.llm_model / filename
+
+
+def condition_path(args, trial):
+    filename = (
+        f"{args.dataset}_{args.num_conditions}_{SEED}_"
+        f"{args.num_examples}_condition2index.pkl"
+    )
+    return Path("conditions/0_shot") / f"{trial}_trial" / args.llm_model / filename
+
+
+def load_pickle(path):
+    with path.open("rb") as file:
+        return pickle.load(file)
+
+
+def load_rule_features(args, data, trial):
+    condition_indices = load_pickle(condition_path(args, trial))
+    return utils.generate_feature(
+        condition_indices,
+        data.num_rows,
+        data.num_labels,
+        args.num_conditions,
+    )
+
+
+def propagate(incidence, features, args, weights=None):
+    return utils.propagate_hypergraph(
+        incidence,
+        features,
+        alpha=args.alpha,
+        max_iter=args.steps,
+        w=weights,
+    )[args.steps]
+
+
+def make_pseudo_labels(propagated, data, args):
+    compatibility = propagated.reshape(
+        -1, data.num_labels, args.num_conditions
+    ).sum(axis=2)
+    probabilities = compatibility / compatibility.sum(axis=1, keepdims=True)
+    sorted_scores = np.sort(compatibility, axis=1)
+    confidence = sorted_scores[:, -1] - sorted_scores[:, -2]
+    nodes = np.argsort(-confidence)[:int(len(confidence) * args.pseudo_ratio)]
+
+    nodes_by_label = defaultdict(list)
+    maximum_per_label = math.ceil(len(nodes) / data.num_labels)
     for node in nodes:
-        node_label = np.argsort(-C_prob[node])
-        for i in range(len(label_list)):
-            if len(label2nodes[node_label[i]]) < max_num_label:
-                label2nodes[node_label[i]].append(node)
+        for label in np.argsort(-probabilities[node]):
+            if len(nodes_by_label[label]) < maximum_per_label:
+                nodes_by_label[label].append(node)
                 break
-    labels = np.full(len(C), -1)
-    for l in range(len(label_list)):
-        labels[label2nodes[l]] = l
-    
-    pseudo_nodes.append(nodes)
-    pseudo_labels.append(labels)
-    
 
-### Load Groups ###
-with open(f'groups/{llm_model}/{_DATA}_{_NUM_GROUP_BATCH}_{_NUM_GROUP_TOTAL}_{_NUM_EXAMPLE}_groups.pkl', 'rb') as f:
-    group_conditions, group_titles = pkl.load(f)
-
-with open(f'groups/{llm_model}/{_DATA}_{_NUM_GROUP_BATCH}_{_NUM_GROUP_TOTAL}_{_NUM_EXAMPLE}_indices.pkl', 'rb') as f:
-    groups = pkl.load(f)
-
-# Fixed settings
-H = utils.generate_hypergraph(X_all.shape[0], groups)
-y_test = y_all[X_test.index]
-
-results_full_pseudo = {}
-results_pseudo = {}
-
-for TRIAL in range(5):
-    results_full_pseudo[TRIAL] = []
-    results_pseudo[TRIAL] = defaultdict(list)
-    
-    ### Load Features (Labels/Conditions) ###
-    save_dir = f'conditions/0_shot/{TRIAL}_trial/{llm_model}'
-
-    with open(f'{save_dir}/{_DATA}_{_NUM_CONDITION}_{_SEED}_{_NUM_EXAMPLE}_condition2index.pkl', 'rb') as f:
-        condition2index = pkl.load(f)
-    
-    X = utils.generate_feature(condition2index, X_all.shape[0], len(label_list), _NUM_CONDITION)
-    Z = utils.propagate_hypergraph(H, X, alpha=0.9, max_iter=args.iter)[args.iter]
-
-    for c_idx in range(_NUM_CONDITION * len(label_list)):
-        _Z = np.zeros(Z.shape)
-        _Z[:,c_idx:c_idx+1] = Z[:,c_idx:c_idx+1]
-        auroc = utils.evaluate(_Z, pseudo_nodes[TRIAL], pseudo_labels[TRIAL], multiclass, len(label_list), _NUM_CONDITION)
-        results_full_pseudo[TRIAL].append(auroc)
-
-    for i in trange(len(groups)):
-        _groups = groups[:i] + groups[i+1:]
-        H_i = utils.generate_hypergraph(X_all.shape[0], _groups)
-        Z = utils.propagate_hypergraph(H_i, X, alpha=0.9, max_iter=args.iter)[args.iter]
-
-        for c_idx in range(_NUM_CONDITION * len(label_list)):
-            _Z = np.zeros(Z.shape)
-            _Z[:,c_idx:c_idx+1] = Z[:,c_idx:c_idx+1]
-            auroc = utils.evaluate(_Z, pseudo_nodes[TRIAL], pseudo_labels[TRIAL], multiclass, len(label_list), _NUM_CONDITION)
-            results_pseudo[TRIAL][c_idx].append(auroc)
+    labels = np.full(data.num_rows, -1)
+    for label in range(data.num_labels):
+        labels[nodes_by_label[label]] = label
+    return nodes, labels
 
 
-group_scores_pseudo = {}
-
-for TRIAL in range(5):
-    group_scores_pseudo[TRIAL] = defaultdict(list)
-    for c_idx in range(_NUM_CONDITION * len(label_list)):
-        score_original = results_full_pseudo[TRIAL][c_idx]
-        for i in range(len(groups)):    
-            score_updated = results_pseudo[TRIAL][c_idx][i]
-            group_scores_pseudo[TRIAL][c_idx].append(score_original - score_updated)
-        group_scores_pseudo[TRIAL][c_idx] = np.array(group_scores_pseudo[TRIAL][c_idx]) + 1e-10
-
-
-tau_list = [0.01, 0.1, 1.0]
-
-print(f'{"Metric":<10} | {"Raw":>8} | {"Orig":>8} | ' +
-      ' | '.join([f"τ={tau:<6}" for tau in tau_list]))
-print('-' * (24 + 12 * (len(tau_list) + 2)))
-
-### Load Groups ###
-with open(f'groups/{llm_model}/{_DATA}_{_NUM_GROUP_BATCH}_{_NUM_GROUP_TOTAL}_{_NUM_EXAMPLE}_indices.pkl', 'rb') as f:
-    groups = pkl.load(f)
-
-H = utils.generate_hypergraph(X_all.shape[0], groups)
-print('Incidence matrix', H.shape)
-
-all_results = []  # store per-trial results
-
-for TRIAL in range(5):    
-    
-    ### Load Features (Labels/Conditions) ###
-    save_dir = f'conditions/0_shot/{TRIAL}_trial/{llm_model}'
-    with open(f'{save_dir}/{_DATA}_{_NUM_CONDITION}_{_SEED}_{_NUM_EXAMPLE}_condition2index.pkl', 'rb') as f:
-        condition2index = pkl.load(f)
-    
-    X = utils.generate_feature(condition2index, X_all.shape[0], len(label_list), _NUM_CONDITION)
-    auc_raw = utils.evaluate(X, X_test.index, y_all, multiclass, len(label_list), _NUM_CONDITION)
-    
-    Z = utils.propagate_hypergraph(H, X, alpha=0.9, max_iter=args.iter)[args.iter]
-    auc_orig = utils.evaluate(Z, X_test.index, y_all, multiclass, len(label_list), _NUM_CONDITION)
-
-    Z_minmax_list, Z_sigmoid_list, Z_softmax_list = [], [], defaultdict(list)
-    for c_idx in range(_NUM_CONDITION * len(label_list)):
-        gsp = np.array(group_scores_pseudo[TRIAL][c_idx])
-
-        norm = True
-        for tau in tau_list:
-            w_tau = np.exp(gsp / tau)
-            w_tau /= np.sum(w_tau)
-            w_tau *= len(groups) / np.sum(w_tau)
-            Z_tau = utils.propagate_hypergraph(H, X[:, c_idx:c_idx + 1], alpha=0.9, max_iter=2, w=w_tau)[2]
-            Z_softmax_list[tau].append(Z_tau)
-
-    # --- Evaluate ---
-    auc_softmax_list = []
-    for tau in tau_list:
-        Z = np.concatenate(Z_softmax_list[tau], axis=1)
-        auc = utils.evaluate(Z, X_test.index, y_all, multiclass, len(label_list), _NUM_CONDITION)
-        auc_softmax_list.append(auc)
-        
-    all_results.append([auc_raw, auc_orig] + auc_softmax_list)
-
-    # Per-trial print
-    print(f'{f"TRIAL {TRIAL}":<10} | {auc_raw:8.4f} | {auc_orig:8.4f} |' +
-          ' | '.join([f"{auc:8.4f}" for auc in auc_softmax_list]))
-
-# --- Summary ---
-all_results = np.array(all_results)
-mean_vals = np.mean(all_results, axis=0)
-std_vals = np.std(all_results, axis=0)
+def individual_rule_aurocs(features, nodes, labels, data, args):
+    return utils.evaluate_individual_rules(
+        features,
+        nodes,
+        labels,
+        data.multiclass,
+        data.num_labels,
+        args.num_conditions,
+    )
 
 
-print('-' * (24 + 12 * (len(tau_list) + 2)))
-print(f'{"MEAN":<10} | ' + ' | '.join([f"{m:8.4f}" for m in mean_vals]))
-print(f'{"STD":<9}  | ' + ' | '.join([f"{s:8.4f}" for s in std_vals]))
-print()
+def estimate_hyperedge_effectiveness(
+    incidence, rule_features, propagated, pseudo_nodes, pseudo_labels, data, args
+):
+    full_aurocs = individual_rule_aurocs(
+        propagated, pseudo_nodes, pseudo_labels, data, args
+    )
+    removed_aurocs = np.empty((rule_features.shape[1], incidence.shape[1]))
+
+    for edge in trange(incidence.shape[1], desc="leave-one-edge-out"):
+        keep_edges = np.arange(incidence.shape[1]) != edge
+        propagated_without_edge = propagate(
+            incidence[:, keep_edges], rule_features, args
+        )
+        removed_aurocs[:, edge] = individual_rule_aurocs(
+            propagated_without_edge,
+            pseudo_nodes,
+            pseudo_labels,
+            data,
+            args,
+        )
+
+    return full_aurocs[:, None] - removed_aurocs + 1e-10
+
+
+def effectiveness_to_weights(effectiveness, tau, num_edges):
+    weights = np.exp(effectiveness / tau)
+    weights /= weights.sum()
+    weights *= num_edges / weights.sum()
+    return weights
+
+
+def adaptive_propagation(incidence, rule_features, effectiveness, args):
+    propagated_rules = []
+    for rule in range(rule_features.shape[1]):
+        weights = effectiveness_to_weights(
+            effectiveness[rule], args.tau, incidence.shape[1]
+        )
+        propagated_rules.append(propagate(
+            incidence, rule_features[:, rule:rule + 1], args, weights
+        ))
+    return np.concatenate(propagated_rules, axis=1)
+
+
+def evaluate(features, data, args):
+    return utils.evaluate(
+        features,
+        data.test_indices,
+        data.targets,
+        data.multiclass,
+        data.num_labels,
+        args.num_conditions,
+    )
+
+
+def run_trial(trial, incidence, data, args):
+    rule_features = load_rule_features(args, data, trial)
+    propagated = propagate(incidence, rule_features, args)
+    pseudo_nodes, pseudo_labels = make_pseudo_labels(propagated, data, args)
+    effectiveness = estimate_hyperedge_effectiveness(
+        incidence,
+        rule_features,
+        propagated,
+        pseudo_nodes,
+        pseudo_labels,
+        data,
+        args,
+    )
+    adaptive = adaptive_propagation(
+        incidence, rule_features, effectiveness, args
+    )
+    return np.array([
+        evaluate(rule_features, data, args),
+        evaluate(propagated, data, args),
+        evaluate(adaptive, data, args),
+    ])
+
+
+def print_header(args, incidence):
+    print(
+        f"dataset={args.dataset} rules/class={args.num_conditions} "
+        f"alpha={args.alpha} steps={args.steps} "
+        f"q={args.pseudo_ratio:g} tau={args.tau:g}"
+    )
+    print(f'{"Metric":<10} | {"Weak labels":>11} | {"TabHGR":>8} | {"TabHGR+":>8}')
+    print("-" * 49)
+    print("Incidence matrix", incidence.shape)
+
+
+def print_result(label, values):
+    print(f"{label:<10} | " + " | ".join(f"{value:8.4f}" for value in values))
+
+
+def main():
+    args = parse_args()
+    trials = parse_trials(args.trials, args.num_trials)
+    utils.set_seed(SEED)
+    data = load_data(args.dataset)
+    groups = load_pickle(group_path(args, num_groups_for(data.num_rows)))
+    incidence = utils.generate_hypergraph(data.num_rows, groups)
+
+    print_header(args, incidence)
+    results = []
+    for trial in trials:
+        result = run_trial(trial, incidence, data, args)
+        results.append(result)
+        print_result(f"TRIAL {trial}", result)
+
+    results = np.asarray(results)
+    print("-" * 49)
+    print_result("MEAN", results.mean(axis=0))
+    print_result("STD", results.std(axis=0))
+    print()
+
+
+if __name__ == "__main__":
+    main()

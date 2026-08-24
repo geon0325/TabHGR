@@ -1,34 +1,49 @@
-# Zero-Shot Tabular Learning via Hypergraph Reasoning with LLMs
+### Zero-Shot Tabular Learning via Hypergraph Reasoning with LLMs
 
-This repository contains the official implementation for **TabHGR+**, a zero-shot tabular learning framework based on hypergraph reasoning using LLMs. 
+Geon Lee, Kyungho Kim, Dongwon Choi, Juyeon Kim, Shinhwan Kang, and Kijung Shin
 
+[**EMNLP 2026**](https://2026.emnlp.org/): Conference on Empirical Methods in Natural Language Processing 2026
 
-## Repository Structure
-```graphql
-.
-├── data/                      # Datasets
-├── generate_weak_labels.ipynb  # LLM-based weak label generation
-├── generate_groups.ipynb       # Hypergraph (group) construction
-├── main.py                     # Training & inference for TabHGR+
-└── README.md
+## Setup
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
 ```
 
-## Datasets
-All datasets used in the paper are provided in the [data] directory.
+## Running
 
-## Weak Label Generation
-We use large language models (LLMs) to generate weak labels based on task and attribute descriptions.
-
-Refer to [generate_weak_labels.ipynb]
-
-## Hyeprgraph Generation
-We construct a hypergraph where each hyperedge represents a semantic group of related rows in the table.
-
-Refer to [generate_groups.ipynb]
-
-## TabHGR+
-TabHGR+ performs hypergraph propagation over the constructed hypergraph with label-adaptive hyperedge weighting.
+To run TabHGR and TabHGR+ on the Diabetes dataset:
 
 ```bash
 python main.py --dataset diabetes
+```
+
+Other datasets can be evaluated in the same way:
+
+```bash
+python main.py --dataset heart
+```
+
+Supported datasets: `adult`, `bank`, `blood`, `car`, `credit-g`, `diabetes`, `heart`, `communities`, and `myocardial`.
+
+To run specific trials:
+
+```bash
+python main.py --dataset diabetes --trials 0
+python main.py --dataset diabetes --trials 1,2,3,4
+```
+
+If memory is limited, run one trial at a time:
+
+```bash
+OPENBLAS_NUM_THREADS=1 python main.py --dataset adult --trials 0
+```
+
+To view all available options:
+
+```bash
+python main.py --help
 ```
