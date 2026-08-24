@@ -2,9 +2,9 @@
 Code and datasets of **Zero-Shot Tabular Learning via Hypergraph Reasoning with LLMs**, ([EMNLP 2026](https://2026.emnlp.org/)).
 
 ## Tabular Datasets
-We provide nine tabular datasets: `adult`, `bank`, `blood`, `car`, `credit-g`, `diabetes`, `heart`, `communities`, and `myocardial`.
+Experiments can be run on nine tabular datasets: `adult`, `bank`, `blood`, `car`, `credit-g`, `diabetes`, `heart`, `communities`, and `myocardial`.
 
-## Running TabHGR and TabHGR+
+## Installation
 Install the required packages:
 
 ```bash
@@ -14,6 +14,16 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
+## Generating Weak Labels and Groups (Optional)
+The generated weak labels and groups are already included. To generate them again:
+
+```bash
+export OPENAI_API_KEY="your-api-key"
+python generate_weak_labels.py --dataset diabetes
+python generate_groups.py --dataset diabetes
+```
+
+## Running TabHGR and TabHGR+
 Run TabHGR and TabHGR+ on a dataset:
 
 ```bash
