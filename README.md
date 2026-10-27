@@ -1,6 +1,8 @@
 # TabHGR
 Code and datasets of **Zero-Shot Tabular Learning via Hypergraph Reasoning with LLMs** ([EMNLP 2026](https://2026.emnlp.org/)).
 
+**Paper:** [arXiv](https://arxiv.org/abs/2610.23923)
+
 ## Tabular Datasets
 Experiments can be run on nine tabular datasets: `adult`, `bank`, `blood`, `car`, `credit-g`, `diabetes`, `heart`, `communities`, and `myocardial`.
 
@@ -12,7 +14,7 @@ python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
-```
+```ㅍ
 
 ## Generating Weak Labels and Groups (Optional)
 The generated weak labels and groups are already included. To generate them again:
